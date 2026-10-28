@@ -1,0 +1,12 @@
+/nologo
+/target:winexe
+/optimize+
+/win32icon:Bliss.ico
+/win32manifest:app.manifest
+/r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\PresentationFramework.dll
+/r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\PresentationCore.dll
+/r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\WindowsBase.dll
+/r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Xaml.dll
+/r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Windows.Forms.dll
+/out:Bliss.scr
+BlissSaver.cs
