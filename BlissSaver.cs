@@ -1,12 +1,13 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 
@@ -19,11 +20,14 @@ namespace BlissSaver
     {
         const int MoveSlop = 20;
         const int ArmDelayMs = 700;
+        const string VideoResource = "BlissSaver.loop.mp4";
+        const string MusicResource = "BlissSaver.music.m4a";
+
+        static MediaPlayer music;
 
         [STAThread]
         public static int Main(string[] args)
         {
-            string joined = args == null ? "" : string.Join(" ", args);
             string head = args != null && args.Length > 0 ? args[0] : "/s";
             string flag = head.Trim().TrimStart('-', '/').ToLowerInvariant();
 
@@ -47,10 +51,9 @@ namespace BlissSaver
 
         static void ShowConfig()
         {
-            string path = FindVideo() ?? "(film nije nadjen)";
             MessageBox.Show(
-                "Bliss pu\u0161ta film dobrodo\u0161lice preko celog ekrana.\r\n\r\n" +
-                path + "\r\n\r\n" +
+                "Bliss vrti brdo u krug, a muzika dobrodo\u0161lice ide posebno.\r\n\r\n" +
+                "Slika i muzika su u samom \u010duvaru.\r\n\r\n" +
                 "Pomeranje mi\u0161a, taster ili klik zatvara \u010duvar.",
                 "Bliss",
                 MessageBoxButton.OK,
@@ -59,6 +62,18 @@ namespace BlissSaver
 
         static void RunFull()
         {
+            string video = Extract(VideoResource, "loop.mp4");
+            string song = Extract(MusicResource, "music.m4a");
+            if (video == null || song == null)
+            {
+                MessageBox.Show(
+                    "U \u010duvaru nedostaje slika ili muzika.",
+                    "Bliss",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
             var app = new Application();
             var origin = Forms.Cursor.Position;
             bool armed = false;
@@ -83,7 +98,7 @@ namespace BlissSaver
                     Width = 100,
                     Height = 100,
                     Cursor = Cursors.None,
-                    Content = primary ? BuildPlayer(loopSound: true) : null
+                    Content = CreateVideo(video)
                 };
 
                 window.SourceInitialized += delegate
@@ -95,7 +110,16 @@ namespace BlissSaver
                         0x0040);
                 };
 
-                Action close = delegate { app.Shutdown(); };
+                Action close = delegate
+                {
+                    if (music != null)
+                    {
+                        music.Stop();
+                        music.Close();
+                        music = null;
+                    }
+                    app.Shutdown();
+                };
                 window.MouseDown += delegate { if (armed) close(); };
                 window.KeyDown += delegate { if (armed) close(); };
                 window.MouseMove += delegate
@@ -108,11 +132,13 @@ namespace BlissSaver
                 window.Show();
             }
 
+            StartMusic(song);
             app.Run();
         }
 
         static void RunPreview(IntPtr parent)
         {
+            string video = Extract(VideoResource, "loop.mp4");
             var app = new Application();
             RECT rect;
             GetClientRect(parent, out rect);
@@ -127,7 +153,14 @@ namespace BlissSaver
                 Height = height
             };
             var source = new HwndSource(parameters);
-            source.RootVisual = BuildPlayer(loopSound: false);
+            source.RootVisual = video == null
+                ? (UIElement)new TextBlock
+                {
+                    Text = "Bliss",
+                    Foreground = Brushes.White,
+                    Background = Brushes.Black
+                }
+                : CreateVideo(video);
 
             var watch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
             watch.Tick += delegate
@@ -139,55 +172,70 @@ namespace BlissSaver
             app.Run();
         }
 
-        static UIElement BuildPlayer(bool loopSound)
+        static UIElement CreateVideo(string path)
         {
-            string path = FindVideo();
-            if (path == null)
-            {
-                return new TextBlock
-                {
-                    Text = "Bliss-Welcome-16x9.mp4 nije na\u0111en.",
-                    Foreground = Brushes.White,
-                    Background = Brushes.Black,
-                    FontSize = 18,
-                    TextAlignment = TextAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-            }
+            var timeline = new MediaTimeline(new Uri(path, UriKind.Absolute));
+            timeline.RepeatBehavior = RepeatBehavior.Forever;
+            var clock = (MediaClock)timeline.CreateClock(true);
 
             var media = new MediaElement
             {
-                Source = new Uri(path, UriKind.Absolute),
+                Clock = clock,
                 LoadedBehavior = MediaState.Manual,
                 UnloadedBehavior = MediaState.Manual,
                 Stretch = Stretch.UniformToFill,
-                IsMuted = !loopSound,
-                Volume = loopSound ? 1 : 0
+                IsMuted = true,
+                Volume = 0
             };
-            media.MediaEnded += delegate
+            media.Loaded += delegate
             {
-                media.Position = TimeSpan.Zero;
-                media.Play();
+                ClockController controller = clock.Controller;
+                if (controller == null || clock.CurrentState == ClockState.Active)
+                    return;
+                controller.Begin();
             };
-            media.Loaded += delegate { media.Play(); };
             return media;
         }
 
-        static string FindVideo()
+        static void StartMusic(string path)
         {
-            string name = "Bliss-Welcome-16x9.mp4";
-            var candidates = new List<string>();
-            string here = Path.GetDirectoryName(typeof(Program).Assembly.Location);
-            if (!string.IsNullOrEmpty(here))
-                candidates.Add(Path.Combine(here, name));
-            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            candidates.Add(Path.Combine(desktop, name));
-            foreach (string candidate in candidates)
+            music = new MediaPlayer { Volume = 1 };
+            music.MediaEnded += delegate
             {
-                if (File.Exists(candidate))
-                    return candidate;
+                if (music == null) return;
+                music.Position = TimeSpan.Zero;
+                music.Play();
+            };
+            music.MediaOpened += delegate
+            {
+                if (music != null)
+                    music.Play();
+            };
+            music.Open(new Uri(path, UriKind.Absolute));
+        }
+
+        static string Extract(string resourceName, string fileName)
+        {
+            Stream input = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
+            if (input == null)
+                return null;
+            using (input)
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "BlissScreensaver");
+                Directory.CreateDirectory(dir);
+                string path = Path.Combine(dir, fileName);
+                try
+                {
+                    using (var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+                        input.CopyTo(output);
+                }
+                catch (IOException)
+                {
+                    if (!File.Exists(path))
+                        return null;
+                }
+                return path;
             }
-            return null;
         }
 
         static IntPtr ParseHandle(string head, string[] args)

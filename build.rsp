@@ -3,6 +3,8 @@
 /optimize+
 /win32icon:Bliss.ico
 /win32manifest:app.manifest
+/resource:loop.mp4,BlissSaver.loop.mp4
+/resource:music.m4a,BlissSaver.music.m4a
 /r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\PresentationFramework.dll
 /r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\PresentationCore.dll
 /r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\WindowsBase.dll
