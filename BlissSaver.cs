@@ -7,7 +7,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 
@@ -172,28 +171,27 @@ namespace BlissSaver
             app.Run();
         }
 
+        // One player. The mp4 already contains several full pan cycles
+        // joined frame-perfectly, so WPF does not cut a circle short.
+        // On MediaEnded we only restart after the last frame of the last cycle.
         static UIElement CreateVideo(string path)
         {
-            var timeline = new MediaTimeline(new Uri(path, UriKind.Absolute));
-            timeline.RepeatBehavior = RepeatBehavior.Forever;
-            var clock = (MediaClock)timeline.CreateClock(true);
-
             var media = new MediaElement
             {
-                Clock = clock,
+                Source = new Uri(path, UriKind.Absolute),
                 LoadedBehavior = MediaState.Manual,
                 UnloadedBehavior = MediaState.Manual,
                 Stretch = Stretch.UniformToFill,
                 IsMuted = true,
                 Volume = 0
             };
-            media.Loaded += delegate
+            media.MediaEnded += delegate
             {
-                ClockController controller = clock.Controller;
-                if (controller == null || clock.CurrentState == ClockState.Active)
-                    return;
-                controller.Begin();
+                media.Position = TimeSpan.Zero;
+                media.Play();
             };
+            media.MediaOpened += delegate { media.Play(); };
+            media.Loaded += delegate { media.Play(); };
             return media;
         }
 
